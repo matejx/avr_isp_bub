@@ -47,6 +47,7 @@ AVR isp bub
 #include "mat/serque.h"
 
 #include "hwdefs.h"
+#include "swdefs.h"
 #include "isp.h"
 
 // ----------------------------------------------------------------------------
@@ -101,8 +102,6 @@ static uint16_t rlen = 0;
 
 static uint8_t bufdisp = 1;
 
-static uint8_t i2c_adr = 0;
-
 static uint8_t atbuf[2*BUFSIZE+16];
 static uint16_t atbuflen = 0;
 
@@ -112,36 +111,31 @@ const char* fuse_name[] = {"lfuse","hfuse","efuse","lock"};
 // AT commands
 // ----------------------------------------------------------------------------
 
-char atbufwr[]      PROGMEM = "AT+BUFWR="; // dddddd...
-char atbufrd[]      PROGMEM = "AT+BUFRD";
-char atbufrdlen[]   PROGMEM = "AT+BUFRDLEN";
-char atbufswap[]    PROGMEM = "AT+BUFSWAP";
-char atbufcmp[]     PROGMEM = "AT+BUFCMP";
-char atbufrddisp[]  PROGMEM = "AT+BUFRDDISP="; // 0,1
-char ati2cadr[]     PROGMEM = "AT+I2CADR=";	// aa
-char atee24rd[]     PROGMEM = "AT+EE24RD="; // aaaaaa,len
-char atee24wr[]     PROGMEM = "AT+EE24WR="; // aaaaaa
-char atee24crc[]    PROGMEM = "AT+EE24CRC="; // len
-char ateerd[]       PROGMEM = "AT+EERD="; // aaaaaa,len
-char ateewr[]       PROGMEM = "AT+EEWR="; // aaaaaa
-char atisptarget[]  PROGMEM = "AT+ISPTARGET="; // ...
-char atispcon[]     PROGMEM = "AT+ISPCON";
-char atispdis[]     PROGMEM = "AT+ISPDIS";
-char atispsig[]     PROGMEM = "AT+ISPSIG";
-char atisperase[]   PROGMEM = "AT+ISPERASE";
-char atispflsrd[]   PROGMEM = "AT+ISPFLSRD="; // aaaaaa,len
-char atispflswr[]   PROGMEM = "AT+ISPFLSWR="; // aaaaaa
-char atispfuserd[]  PROGMEM = "AT+ISPFUSERD";
-char atispfusewr[]  PROGMEM = "AT+ISPFUSEWR="; // dd,f
-char atispeerd[]    PROGMEM = "AT+ISPEERD="; // aaaaaa,len
-char atispeewr[]    PROGMEM = "AT+ISPEEWR="; // aaaaaa
-char atispprogram[] PROGMEM = "AT+ISPPROGRAM";
+const char atbufwr[]      PROGMEM = "AT+BUFWR="; // dddddd...
+const char atbufrd[]      PROGMEM = "AT+BUFRD";
+const char atbufrdlen[]   PROGMEM = "AT+BUFRDLEN";
+const char atbufswap[]    PROGMEM = "AT+BUFSWAP";
+const char atbufcmp[]     PROGMEM = "AT+BUFCMP";
+const char atbufrddisp[]  PROGMEM = "AT+BUFRDDISP="; // 0,1
+const char atee24rd[]     PROGMEM = "AT+EE24RD="; // aaaaaa,len
+const char atee24wr[]     PROGMEM = "AT+EE24WR="; // aaaaaa
+const char atee24crc[]    PROGMEM = "AT+EE24CRC="; // len
+const char atisptarget[]  PROGMEM = "AT+ISPTARGET="; // ...
+const char atispcon[]     PROGMEM = "AT+ISPCON";
+const char atispdis[]     PROGMEM = "AT+ISPDIS";
+const char atispsig[]     PROGMEM = "AT+ISPSIG";
+const char atisperase[]   PROGMEM = "AT+ISPERASE";
+const char atispflsrd[]   PROGMEM = "AT+ISPFLSRD="; // aaaaaa,len
+const char atispflswr[]   PROGMEM = "AT+ISPFLSWR="; // aaaaaa
+const char atispfuserd[]  PROGMEM = "AT+ISPFUSERD";
+const char atispfusewr[]  PROGMEM = "AT+ISPFUSEWR="; // dd,f
+const char atispeerd[]    PROGMEM = "AT+ISPEERD="; // aaaaaa,len
+const char atispeewr[]    PROGMEM = "AT+ISPEEWR="; // aaaaaa
+const char atispprogram[] PROGMEM = "AT+ISPPROGRAM";
 
 PGM_P atcommands[] = {
 	atbufwr,atbufrd,atbufrdlen,atbufswap,atbufcmp,atbufrddisp,
-	ati2cadr,
 	atee24rd,atee24wr,atee24crc,
-	ateerd,ateewr,
 	atisptarget,atispcon,atispdis,atispsig,atisperase,atispflsrd,atispflswr,
 	atispfuserd,atispfusewr,atispeerd,atispeewr,atispprogram
 };
@@ -339,13 +333,14 @@ uint8_t tgt_prog_try(void)
 			ser_endl(AT_CMD_UART);
 
 			ee24_rd(adr, atbuf, pgsize);
-			if( bufofval(atbuf, pgsize, 0xff) ) continue; // skip empty pages
-			isp_flash_wr(adr, atbuf, pgsize);
-			uint8_t vrf;
-			isp_flash_rd(adr, atbuf, pgsize, &vrf);
-			if( vrf == 0 ) {
-				ser_puts_P(AT_CMD_UART, PSTR("ERR: Flash verify failed\r\n"));
-				return 4;
+			if( !bufofval(atbuf, pgsize, 0xff) ) { // write only non-empty pages
+				isp_flash_wr(adr, atbuf, pgsize);
+				uint8_t vrf;
+				isp_flash_rd(adr, atbuf, pgsize, &vrf);
+				if( vrf == 0 ) {
+					ser_puts_P(AT_CMD_UART, PSTR("ERR: Flash verify failed\r\n"));
+					return 4;
+				}
 			}
 			adr += pgsize;
 		}
@@ -515,21 +510,6 @@ uint8_t proc_at_cmd(const char* s)
 		return 1;
 	}
 
-// --- generic I2C commands ---------------------------------------------------
-
-	// only here for bus gofer programming script compatibility
-	if( 0 == strncmp_P(s, ati2cadr, strlen_P(ati2cadr)) ) {
-		s += strlen_P(ati2cadr);
-
-		if( strlen(s) != 2 ) return 1;
-
-		i2c_adr = uhtoi(s, 2);
-
-		//EE24_I2C_ADR = i2c_adr;
-
-		return 0;
-	}
-
 // --- I2C EEPROM commands ----------------------------------------------------
 
 	if( 0 == strncmp_P(s, atee24rd, strlen_P(atee24rd)) ) {
@@ -582,43 +562,6 @@ uint8_t proc_at_cmd(const char* s)
 		return 0;
 	}
 
-// --- internal EEPROM commands -----------------------------------------------
-/*
-	if( 0 == strncmp_P(s, ateerd, strlen_P(ateerd)) ) {
-		s += strlen_P(ateerd);
-
-		if( strlen(s) < 8 ) return 1;
-		if( s[6] != ',' ) return 1;
-
-		uint16_t adr = uhtoi(s, 6);
-		s += 7;
-		uint16_t len = udtoi(s);
-
-		if( (len < 1) || (len > BUFSIZE) ) return 1;
-
-		rlen = len;
-
-		eeprom_read_block(rbuf, (uint8_t*)adr, rlen);
-
-		if( bufdisp ) hprintbuf(rbuf, rlen);
-
-		return 0;
-	}
-
-	if( 0 == strncmp_P(s, ateewr, strlen_P(ateewr)) ) {
-		s += strlen_P(ateewr);
-
-		if( wlen == 0 ) return 1; // nothing to write
-		//if( wlen > 64 ) return 1; // EE page write supports up to 64 bytes
-		if( strlen(s) != 6 ) return 1;
-
-		uint16_t adr = uhtoi(s, 6);
-
-		eeprom_write_block(wbuf, (uint8_t*)adr, wlen);
-
-		return 0;
-	}
-*/
 // --- AVR ISP commands -------------------------------------------------------
 
 	if( 0 == strncmp_P(s, atisptarget, strlen_P(atisptarget)) ) {
@@ -670,7 +613,7 @@ uint8_t proc_at_cmd(const char* s)
 
 		return 0;
 	}
-
+#ifdef ISP_DEBUG_COMMANDS
 	if( 0 == strncmp_P(s, atispcon, strlen_P(atispcon)) ) {
 
 		if( isp_connect() ) return 0;
@@ -798,7 +741,7 @@ uint8_t proc_at_cmd(const char* s)
 
 		return 0;
 	}
-
+#endif
 	if( 0 == strncmp_P(s, atispprogram, strlen_P(atispprogram)) ) {
 		ser_puti(AT_CMD_UART, tgt_prog(), 10);
 		ser_endl(AT_CMD_UART);
