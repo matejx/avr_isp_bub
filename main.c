@@ -2,7 +2,7 @@
 AVR isp bub
 
 @file		main.c
-@author		Matej Kogovsek (matej@hamradio.si)
+@author		Matej Kogovsek
 @copyright	GPL v2
 */
 
