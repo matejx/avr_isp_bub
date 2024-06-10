@@ -43,12 +43,12 @@ AVR isp bub
 
 #include "mat/spi.h"
 #include "mat/i2c.h"
-#include "mat/ee_24.h"
 #include "mat/serque.h"
 
 #include "hwdefs.h"
 #include "swdefs.h"
 #include "isp.h"
+#include "ee_24.h"
 
 // ----------------------------------------------------------------------------
 // DEFINES

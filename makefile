@@ -4,7 +4,7 @@ MCU = atmega8
 
 F_CPU = 1000000
 
-LIBDIR = ../lib
+LIBDIR = ../../lib
 
 # Output format. (can be srec, ihex, binary)
 FORMAT = ihex
@@ -23,9 +23,9 @@ OBJDIR = .
 # List C source files here. (C dependencies are automatically generated.)
 SRC = $(TARGET).c
 SRC += isp.c
+SRC += ee_24.c
 SRC += $(LIBDIR)/mat/spi.c
 SRC += $(LIBDIR)/mat/i2c.c
-SRC += $(LIBDIR)/mat/ee_24.c
 SRC += $(LIBDIR)/mat/circbuf8.c
 SRC += $(LIBDIR)/mat/serque.c
 
